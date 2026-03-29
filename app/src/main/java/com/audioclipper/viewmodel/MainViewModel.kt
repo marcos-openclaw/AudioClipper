@@ -16,6 +16,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.pow
 
 sealed class ExportState {
     data object Idle : ExportState()
@@ -53,6 +54,12 @@ class MainViewModel : ViewModel() {
     private val _fadeOutEnabled = MutableStateFlow(false)
     val fadeOutEnabled: StateFlow<Boolean> = _fadeOutEnabled
 
+    private val _pitchSemitones = MutableStateFlow(0)
+    val pitchSemitones: StateFlow<Int> = _pitchSemitones
+
+    private val _volumePercent = MutableStateFlow(100)
+    val volumePercent: StateFlow<Int> = _volumePercent
+
     private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
     val exportState: StateFlow<ExportState> = _exportState
 
@@ -77,6 +84,8 @@ class MainViewModel : ViewModel() {
         _fadeOutEnabled.value = false
         _fadeInDuration.value = 1f
         _fadeOutDuration.value = 1f
+        _pitchSemitones.value = 0
+        _volumePercent.value = 100
         _exportState.value = ExportState.Idle
     }
 
@@ -112,6 +121,22 @@ class MainViewModel : ViewModel() {
         _fadeOutDuration.value = seconds.coerceIn(0f, 5f)
     }
 
+    fun pitchUp() {
+        _pitchSemitones.value = (_pitchSemitones.value + 1).coerceAtMost(12)
+    }
+
+    fun pitchDown() {
+        _pitchSemitones.value = (_pitchSemitones.value - 1).coerceAtLeast(-12)
+    }
+
+    fun resetPitch() {
+        _pitchSemitones.value = 0
+    }
+
+    fun setVolumePercent(percent: Int) {
+        _volumePercent.value = percent.coerceIn(0, 200)
+    }
+
     fun resetExportState() {
         _exportState.value = ExportState.Idle
     }
@@ -143,7 +168,7 @@ class MainViewModel : ViewModel() {
                 val baseName = _audioFileName.value
                     .substringBeforeLast(".")
                     .replace(" ", "_")
-                val outputFile = File(outputDir, "${baseName}_trimmed_${timestamp}.mp3")
+                val outputFile = File(outputDir, "${baseName}_clip_${timestamp}.mp3")
                 val outputPath = outputFile.absolutePath
 
                 val startSec = inMs / 1000.0
@@ -152,28 +177,39 @@ class MainViewModel : ViewModel() {
 
                 val audioFilters = mutableListOf<String>()
 
+                // Pitch shift
+                val semitones = _pitchSemitones.value
+                if (semitones != 0) {
+                    val factor = 2.0.pow(semitones / 12.0)
+                    val newRate = (44100 * factor).toInt()
+                    audioFilters.add("asetrate=$newRate,aresample=44100")
+                }
+
+                // Volume
+                val vol = _volumePercent.value
+                if (vol != 100) {
+                    val volFloat = vol / 100.0
+                    audioFilters.add("volume=${"%.2f".format(volFloat)}")
+                }
+
+                // Fade in
                 if (_fadeInEnabled.value && _fadeInDuration.value > 0f) {
                     audioFilters.add("afade=t=in:d=${_fadeInDuration.value}")
                 }
+
+                // Fade out
                 if (_fadeOutEnabled.value && _fadeOutDuration.value > 0f) {
                     val fadeOutStart = clipDuration - _fadeOutDuration.value
                     if (fadeOutStart > 0) {
-                        audioFilters.add("afade=t=out:st=${fadeOutStart}:d=${_fadeOutDuration.value}")
+                        audioFilters.add("afade=t=out:st=${"%.2f".format(fadeOutStart)}:d=${_fadeOutDuration.value}")
                     }
                 }
 
-                val filterArg = if (audioFilters.isNotEmpty()) {
-                    "-af \"${audioFilters.joinToString(",")}\""
-                } else {
-                    ""
-                }
-
                 val command = buildString {
+                    append("-ss $startSec -to $endSec ")
                     append("-i \"$inputPath\" ")
-                    append("-ss $startSec ")
-                    append("-to $endSec ")
-                    if (filterArg.isNotEmpty()) {
-                        append("$filterArg ")
+                    if (audioFilters.isNotEmpty()) {
+                        append("-af \"${audioFilters.joinToString(",")}\" ")
                     }
                     append("-acodec libmp3lame -b:a 192k ")
                     append("-y \"$outputPath\"")

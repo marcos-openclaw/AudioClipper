@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +26,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.FileOpen
@@ -33,9 +36,11 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +54,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -70,21 +77,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.audioclipper.ui.theme.PurpleAccent
-import com.audioclipper.ui.theme.PurpleAccentDark
-import com.audioclipper.ui.theme.PurpleAccentLight
-import com.audioclipper.ui.theme.PurpleContainer
-import com.audioclipper.ui.theme.Charcoal600
+import com.audioclipper.ui.theme.BrightPurple
 import com.audioclipper.ui.theme.Charcoal700
+import com.audioclipper.ui.theme.PrimaryViolet
+import com.audioclipper.ui.theme.PurpleContainer
 import com.audioclipper.viewmodel.ExportState
 import com.audioclipper.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val context = LocalContext.current
@@ -99,6 +104,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val fadeOutEnabled by viewModel.fadeOutEnabled.collectAsState()
     val fadeInDuration by viewModel.fadeInDuration.collectAsState()
     val fadeOutDuration by viewModel.fadeOutDuration.collectAsState()
+    val pitchSemitones by viewModel.pitchSemitones.collectAsState()
+    val volumePercent by viewModel.volumePercent.collectAsState()
     val exportState by viewModel.exportState.collectAsState()
 
     var currentPositionMs by remember { mutableLongStateOf(0L) }
@@ -114,7 +121,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         onDispose { player.release() }
     }
 
-    // Load audio when URI changes
     LaunchedEffect(audioUri) {
         audioUri?.let { uri ->
             player.setMediaItem(MediaItem.fromUri(uri))
@@ -134,7 +140,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    // Poll position
     LaunchedEffect(audioUri) {
         while (true) {
             delay(100)
@@ -145,7 +150,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    // Export state feedback
     LaunchedEffect(exportState) {
         when (val state = exportState) {
             is ExportState.Done -> {
@@ -170,6 +174,12 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         ActivityResultContracts.RequestPermission()
     ) { _ -> }
 
+    val audioMimeTypes = arrayOf(
+        "audio/mpeg", "audio/mp4", "audio/aac",
+        "audio/ogg", "audio/wav", "audio/flac",
+        "audio/x-wav", "audio/x-m4a", "audio/*"
+    )
+
     val audioPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -182,7 +192,40 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         }
     }
 
+    fun launchPicker() {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        permissionLauncher.launch(permission)
+        audioPickerLauncher.launch(audioMimeTypes)
+    }
+
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.ContentCut,
+                            contentDescription = null,
+                            tint = BrightPurple,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "AudioClipper",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
@@ -199,7 +242,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 Icon(
                     imageVector = Icons.Filled.MusicNote,
                     contentDescription = null,
-                    tint = PurpleAccent,
+                    tint = BrightPurple,
                     modifier = Modifier.size(80.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
@@ -211,29 +254,12 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Trim audio files with precision",
+                    text = "Trim, pitch-shift & process audio",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(32.dp))
-                Button(
-                    onClick = {
-                        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            Manifest.permission.READ_MEDIA_AUDIO
-                        } else {
-                            Manifest.permission.READ_EXTERNAL_STORAGE
-                        }
-                        permissionLauncher.launch(permission)
-                        audioPickerLauncher.launch(
-                            arrayOf(
-                                "audio/mpeg", "audio/mp4", "audio/aac",
-                                "audio/ogg", "audio/wav", "audio/flac",
-                                "audio/x-wav", "audio/x-m4a", "audio/*"
-                            )
-                        )
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PurpleAccent)
-                ) {
+                FilledTonalButton(onClick = { launchPicker() }) {
                     Icon(Icons.Filled.FileOpen, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Open Audio File")
@@ -246,265 +272,397 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                     .fillMaxSize()
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp)
+                    .navigationBarsPadding()
             ) {
-                // File info header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Filled.MusicNote,
-                        contentDescription = null,
-                        tint = PurpleAccent,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = audioFileName,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = {
-                        player.stop()
-                        player.clearMediaItems()
-                        viewModel.clearAudio()
-                    }) {
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // --- File Info Card ---
+                SectionCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
-                            Icons.Filled.Close,
-                            contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            Icons.Filled.MusicNote,
+                            contentDescription = null,
+                            tint = BrightPurple,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = audioFileName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = {
+                            player.stop()
+                            player.clearMediaItems()
+                            viewModel.clearAudio()
+                        }) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // --- Playback Card ---
+                SectionCard {
+                    // Timeline scrubber
+                    TimelineScrubber(
+                        durationMs = durationMs,
+                        currentPositionMs = currentPositionMs,
+                        inPointMs = inPointMs,
+                        outPointMs = outPointMs,
+                        isDragging = isDragging,
+                        dragPosition = dragPosition,
+                        onDragStart = { fraction ->
+                            isDragging = true
+                            dragPosition = fraction
+                        },
+                        onDrag = { fraction ->
+                            dragPosition = fraction.coerceIn(0f, 1f)
+                        },
+                        onDragEnd = {
+                            val seekTo = (dragPosition * durationMs).toLong()
+                            player.seekTo(seekTo)
+                            currentPositionMs = seekTo
+                            isDragging = false
+                        },
+                        onTap = { fraction ->
+                            val seekTo = (fraction * durationMs).toLong()
+                            player.seekTo(seekTo)
+                            currentPositionMs = seekTo
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Time display
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val displayPos = if (isDragging) (dragPosition * durationMs).toLong() else currentPositionMs
+                        Text(
+                            text = formatTime(displayPos),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = formatTime(durationMs),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Playback controls
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                player.seekTo((player.currentPosition - 10000).coerceAtLeast(0))
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.SkipPrevious,
+                                contentDescription = "-10s",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        IconButton(
+                            onClick = {
+                                if (player.isPlaying) player.pause() else player.play()
+                            },
+                            modifier = Modifier
+                                .size(56.dp)
+                                .background(PrimaryViolet, RoundedCornerShape(28.dp))
+                        ) {
+                            Icon(
+                                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        IconButton(
+                            onClick = {
+                                player.seekTo((player.currentPosition + 10000).coerceAtMost(durationMs))
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.SkipNext,
+                                contentDescription = "+10s",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // --- Trim Card ---
+                SectionCard {
+                    SectionHeader(emoji = "\u2702\uFE0F", label = "Trim")
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = { viewModel.setInPoint(currentPositionMs) },
+                            modifier = Modifier.weight(1f).height(48.dp)
+                        ) {
+                            Text(
+                                text = if (inPointMs != null) "IN: ${formatTime(inPointMs!!)}" else "SET IN",
+                                maxLines = 1,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                        FilledTonalButton(
+                            onClick = { viewModel.setOutPoint(currentPositionMs) },
+                            modifier = Modifier.weight(1f).height(48.dp)
+                        ) {
+                            Text(
+                                text = if (outPointMs != null) "OUT: ${formatTime(outPointMs!!)}" else "SET OUT",
+                                maxLines = 1,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+
+                    if (inPointMs != null || outPointMs != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val rangeStart = inPointMs ?: 0L
+                        val rangeEnd = outPointMs ?: durationMs
+                        Text(
+                            text = "Selection: ${formatTime(rangeEnd - rangeStart)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = BrightPurple,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Timeline scrubber
-                TimelineScrubber(
-                    durationMs = durationMs,
-                    currentPositionMs = currentPositionMs,
-                    inPointMs = inPointMs,
-                    outPointMs = outPointMs,
-                    isDragging = isDragging,
-                    dragPosition = dragPosition,
-                    onDragStart = { fraction ->
-                        isDragging = true
-                        dragPosition = fraction
-                    },
-                    onDrag = { fraction ->
-                        dragPosition = fraction.coerceIn(0f, 1f)
-                    },
-                    onDragEnd = {
-                        val seekTo = (dragPosition * durationMs).toLong()
-                        player.seekTo(seekTo)
-                        currentPositionMs = seekTo
-                        isDragging = false
-                    },
-                    onTap = { fraction ->
-                        val seekTo = (fraction * durationMs).toLong()
-                        player.seekTo(seekTo)
-                        currentPositionMs = seekTo
+                // --- Pitch Card ---
+                SectionCard {
+                    SectionHeader(emoji = "\uD83C\uDFB5", label = "Pitch")
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = { viewModel.pitchDown() },
+                            modifier = Modifier.size(48.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.ArrowDownward,
+                                contentDescription = "Pitch down",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(20.dp))
+
+                        Text(
+                            text = when {
+                                pitchSemitones > 0 -> "Pitch: +$pitchSemitones st"
+                                pitchSemitones < 0 -> "Pitch: $pitchSemitones st"
+                                else -> "Pitch: 0 st"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (pitchSemitones != 0) BrightPurple else MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.width(100.dp),
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.width(20.dp))
+
+                        OutlinedButton(
+                            onClick = { viewModel.pitchUp() },
+                            modifier = Modifier.size(48.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.ArrowUpward,
+                                contentDescription = "Pitch up",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                    if (pitchSemitones != 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.resetPitch() },
+                            modifier = Modifier.fillMaxWidth().height(40.dp)
+                        ) {
+                            Text("Reset Pitch", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
 
-                // Time display
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    val displayPos = if (isDragging) (dragPosition * durationMs).toLong() else currentPositionMs
-                    Text(
-                        text = formatTime(displayPos),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // --- Volume Card ---
+                SectionCard {
+                    SectionHeader(emoji = "\uD83D\uDD0A", label = "Volume")
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Slider(
+                            value = volumePercent.toFloat(),
+                            onValueChange = { viewModel.setVolumePercent(it.toInt()) },
+                            valueRange = 0f..200f,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = PrimaryViolet,
+                                activeTrackColor = PrimaryViolet,
+                                inactiveTrackColor = Charcoal700
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "$volumePercent%",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (volumePercent != 100) BrightPurple else MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.width(48.dp),
+                            textAlign = TextAlign.End
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // --- Fade Card ---
+                SectionCard {
+                    SectionHeader(emoji = "\uD83C\uDF0A", label = "Fade")
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    FadeControl(
+                        label = "Fade In",
+                        enabled = fadeInEnabled,
+                        onEnabledChange = { viewModel.setFadeInEnabled(it) },
+                        duration = fadeInDuration,
+                        onDurationChange = { viewModel.setFadeInDuration(it) }
                     )
-                    Text(
-                        text = formatTime(durationMs),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    FadeControl(
+                        label = "Fade Out",
+                        enabled = fadeOutEnabled,
+                        onEnabledChange = { viewModel.setFadeOutEnabled(it) },
+                        duration = fadeOutDuration,
+                        onDurationChange = { viewModel.setFadeOutDuration(it) }
                     )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Playback controls
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = {
-                        player.seekTo((player.currentPosition - 10000).coerceAtLeast(0))
-                    }) {
-                        Icon(
-                            Icons.Filled.SkipPrevious,
-                            contentDescription = "-10s",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            if (player.isPlaying) player.pause() else player.play()
-                        },
-                        modifier = Modifier
-                            .size(56.dp)
-                            .background(PurpleAccent, RoundedCornerShape(28.dp))
+                // --- Export Card ---
+                SectionCard {
+                    SectionHeader(emoji = "\uD83D\uDCE4", label = "Export")
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    FilledTonalButton(
+                        onClick = { viewModel.export(context) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        enabled = exportState !is ExportState.Exporting
                     ) {
-                        Icon(
-                            if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
+                        if (exportState is ExportState.Exporting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = BrightPurple,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Exporting...")
+                        } else {
+                            Icon(Icons.Filled.ContentCut, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Export as MP3")
+                        }
                     }
-                    IconButton(onClick = {
-                        player.seekTo((player.currentPosition + 10000).coerceAtMost(durationMs))
-                    }) {
-                        Icon(
-                            Icons.Filled.SkipNext,
-                            contentDescription = "+10s",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { launchPicker() },
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Icon(Icons.Filled.FileOpen, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Open Another File")
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Trim controls
-                Text(
-                    text = "TRIM POINTS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { viewModel.setInPoint(currentPositionMs) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (inPointMs != null) PurpleAccentDark else Charcoal600
-                        )
-                    ) {
-                        Text(
-                            text = if (inPointMs != null) "IN: ${formatTime(inPointMs!!)}" else "SET IN",
-                            maxLines = 1
-                        )
-                    }
-                    Button(
-                        onClick = { viewModel.setOutPoint(currentPositionMs) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (outPointMs != null) PurpleAccentDark else Charcoal600
-                        )
-                    ) {
-                        Text(
-                            text = if (outPointMs != null) "OUT: ${formatTime(outPointMs!!)}" else "SET OUT",
-                            maxLines = 1
-                        )
-                    }
-                }
-
-                // Trim range info
-                if (inPointMs != null || outPointMs != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    val rangeStart = inPointMs ?: 0L
-                    val rangeEnd = outPointMs ?: durationMs
-                    Text(
-                        text = "Selection: ${formatTime(rangeEnd - rangeStart)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = PurpleAccentLight,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // Fade controls
-                Text(
-                    text = "FADE EFFECTS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Fade In
-                FadeControl(
-                    label = "Fade In",
-                    enabled = fadeInEnabled,
-                    onEnabledChange = { viewModel.setFadeInEnabled(it) },
-                    duration = fadeInDuration,
-                    onDurationChange = { viewModel.setFadeInDuration(it) }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Fade Out
-                FadeControl(
-                    label = "Fade Out",
-                    enabled = fadeOutEnabled,
-                    onEnabledChange = { viewModel.setFadeOutEnabled(it) },
-                    duration = fadeOutDuration,
-                    onDurationChange = { viewModel.setFadeOutDuration(it) }
-                )
 
                 Spacer(modifier = Modifier.height(24.dp))
-
-                // Export button
-                Button(
-                    onClick = { viewModel.export(context) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = exportState !is ExportState.Exporting,
-                    colors = ButtonDefaults.buttonColors(containerColor = PurpleAccent)
-                ) {
-                    if (exportState is ExportState.Exporting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Exporting...")
-                    } else {
-                        Icon(Icons.Filled.ContentCut, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Export as MP3")
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Open another file
-                OutlinedButton(
-                    onClick = {
-                        audioPickerLauncher.launch(
-                            arrayOf(
-                                "audio/mpeg", "audio/mp4", "audio/aac",
-                                "audio/ogg", "audio/wav", "audio/flac",
-                                "audio/x-wav", "audio/x-m4a", "audio/*"
-                            )
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Filled.FileOpen, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Open Another File")
-                }
             }
         }
+    }
+}
+
+@Composable
+private fun SectionCard(content: @Composable () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(emoji: String, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = emoji, style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
@@ -521,15 +679,15 @@ private fun TimelineScrubber(
     onDragEnd: () -> Unit,
     onTap: (Float) -> Unit
 ) {
-    val accentColor = PurpleAccent
-    val accentLight = PurpleAccentLight
+    val accentColor = PrimaryViolet
+    val accentLight = BrightPurple
     val selectionColor = PurpleContainer
     val trackColor = Charcoal700
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(60.dp)
+            .height(56.dp)
             .pointerInput(durationMs) {
                 detectTapGestures { offset ->
                     if (durationMs > 0) {
@@ -560,14 +718,12 @@ private fun TimelineScrubber(
             val trackY = h / 2
             val trackHeight = 6.dp.toPx()
 
-            // Track background
             drawRect(
                 color = trackColor,
                 topLeft = Offset(0f, trackY - trackHeight / 2),
                 size = Size(w, trackHeight)
             )
 
-            // Selection range
             if (durationMs > 0 && (inPointMs != null || outPointMs != null)) {
                 val startFrac = (inPointMs ?: 0L).toFloat() / durationMs
                 val endFrac = (outPointMs ?: durationMs).toFloat() / durationMs
@@ -578,7 +734,6 @@ private fun TimelineScrubber(
                 )
             }
 
-            // In point marker
             if (durationMs > 0 && inPointMs != null) {
                 val x = (inPointMs.toFloat() / durationMs) * w
                 drawLine(
@@ -589,7 +744,6 @@ private fun TimelineScrubber(
                 )
             }
 
-            // Out point marker
             if (durationMs > 0 && outPointMs != null) {
                 val x = (outPointMs.toFloat() / durationMs) * w
                 drawLine(
@@ -600,12 +754,10 @@ private fun TimelineScrubber(
                 )
             }
 
-            // Playhead
             if (durationMs > 0) {
                 val posFrac = if (isDragging) dragPosition else currentPositionMs.toFloat() / durationMs
                 val px = posFrac.coerceIn(0f, 1f) * w
 
-                // Playhead line
                 drawLine(
                     color = accentColor,
                     start = Offset(px, 0f),
@@ -613,7 +765,6 @@ private fun TimelineScrubber(
                     strokeWidth = 2.dp.toPx()
                 )
 
-                // Playhead circle
                 drawCircle(
                     color = accentColor,
                     radius = 8.dp.toPx(),
@@ -655,7 +806,7 @@ private fun FadeControl(
                 checked = enabled,
                 onCheckedChange = onEnabledChange,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = PurpleAccent,
+                    checkedThumbColor = PrimaryViolet,
                     checkedTrackColor = PurpleContainer
                 )
             )
@@ -668,8 +819,8 @@ private fun FadeControl(
             ) {
                 Text(
                     text = "%.1fs".format(duration),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = PurpleAccentLight,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = BrightPurple,
                     modifier = Modifier.width(36.dp)
                 )
                 Slider(
@@ -678,9 +829,9 @@ private fun FadeControl(
                     valueRange = 0f..5f,
                     modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(
-                        thumbColor = PurpleAccent,
-                        activeTrackColor = PurpleAccent,
-                        inactiveTrackColor = Charcoal600
+                        thumbColor = PrimaryViolet,
+                        activeTrackColor = PrimaryViolet,
+                        inactiveTrackColor = Charcoal700
                     )
                 )
             }
