@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import com.audioclipper.ui.theme.BrightPurple
 import com.audioclipper.ui.theme.Charcoal700
@@ -87,6 +88,7 @@ import com.audioclipper.ui.theme.PrimaryViolet
 import com.audioclipper.ui.theme.PurpleContainer
 import com.audioclipper.viewmodel.ExportState
 import com.audioclipper.viewmodel.MainViewModel
+import kotlin.math.pow
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,8 +112,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(false) }
-    var isDragging by remember { mutableStateOf(false) }
-    var dragPosition by remember { mutableFloatStateOf(0f) }
+    val dragState = remember { floatArrayOf(0f, 0f) } // [0]=fraction, [1]=1.0 if dragging
+    var scrubFraction by remember { mutableFloatStateOf(0f) }
 
     val player = remember {
         ExoPlayer.Builder(context).build()
@@ -143,11 +145,27 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     LaunchedEffect(audioUri) {
         while (true) {
             delay(100)
-            if (!isDragging && audioUri != null) {
-                currentPositionMs = player.currentPosition.coerceAtLeast(0)
+            if (audioUri != null) {
                 isPlaying = player.isPlaying
+                if (dragState[1] == 0f) {
+                    currentPositionMs = player.currentPosition.coerceAtLeast(0)
+                    val frac = if (durationMs > 0) currentPositionMs.toFloat() / durationMs.toFloat() else 0f
+                    scrubFraction = frac
+                    dragState[0] = frac
+                } else {
+                    scrubFraction = dragState[0]
+                }
             }
         }
+    }
+
+    LaunchedEffect(pitchSemitones) {
+        val factor = 2f.pow(pitchSemitones / 12f)
+        player.playbackParameters = PlaybackParameters(player.playbackParameters.speed, factor)
+    }
+
+    LaunchedEffect(volumePercent) {
+        player.volume = (volumePercent / 100f).coerceIn(0f, 1f)
     }
 
     LaunchedEffect(exportState) {
@@ -319,29 +337,11 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                     // Timeline scrubber
                     TimelineScrubber(
                         durationMs = durationMs,
-                        currentPositionMs = currentPositionMs,
+                        scrubFraction = scrubFraction,
                         inPointMs = inPointMs,
                         outPointMs = outPointMs,
-                        isDragging = isDragging,
-                        dragPosition = dragPosition,
-                        onDragStart = { fraction ->
-                            isDragging = true
-                            dragPosition = fraction
-                        },
-                        onDrag = { fraction ->
-                            dragPosition = fraction.coerceIn(0f, 1f)
-                        },
-                        onDragEnd = {
-                            val seekTo = (dragPosition * durationMs).toLong()
-                            player.seekTo(seekTo)
-                            currentPositionMs = seekTo
-                            isDragging = false
-                        },
-                        onTap = { fraction ->
-                            val seekTo = (fraction * durationMs).toLong()
-                            player.seekTo(seekTo)
-                            currentPositionMs = seekTo
-                        }
+                        dragState = dragState,
+                        player = player
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -351,7 +351,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        val displayPos = if (isDragging) (dragPosition * durationMs).toLong() else currentPositionMs
+                        val displayPos = if (dragState[1] == 1f) (scrubFraction * durationMs).toLong() else currentPositionMs
                         Text(
                             text = formatTime(displayPos),
                             style = MaterialTheme.typography.labelMedium,
@@ -669,15 +669,11 @@ private fun SectionHeader(emoji: String, label: String) {
 @Composable
 private fun TimelineScrubber(
     durationMs: Long,
-    currentPositionMs: Long,
+    scrubFraction: Float,
     inPointMs: Long?,
     outPointMs: Long?,
-    isDragging: Boolean,
-    dragPosition: Float,
-    onDragStart: (Float) -> Unit,
-    onDrag: (Float) -> Unit,
-    onDragEnd: () -> Unit,
-    onTap: (Float) -> Unit
+    dragState: FloatArray,
+    player: ExoPlayer
 ) {
     val accentColor = PrimaryViolet
     val accentLight = BrightPurple
@@ -691,7 +687,8 @@ private fun TimelineScrubber(
             .pointerInput(durationMs) {
                 detectTapGestures { offset ->
                     if (durationMs > 0) {
-                        onTap(offset.x / size.width.toFloat())
+                        val frac = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        player.seekTo((frac * durationMs).toLong())
                     }
                 }
             }
@@ -699,14 +696,22 @@ private fun TimelineScrubber(
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
                         if (durationMs > 0) {
-                            onDragStart(offset.x / size.width.toFloat())
+                            dragState[0] = offset.x / size.width.toFloat()
+                            dragState[1] = 1f
                         }
                     },
-                    onDragEnd = { onDragEnd() },
-                    onDragCancel = { onDragEnd() },
+                    onDragEnd = {
+                        player.seekTo((dragState[0] * durationMs).toLong())
+                        dragState[1] = 0f
+                    },
+                    onDragCancel = {
+                        dragState[1] = 0f
+                    },
                     onHorizontalDrag = { _, dragAmount ->
                         if (durationMs > 0) {
-                            onDrag(dragPosition + dragAmount / size.width.toFloat())
+                            val newFrac = (dragState[0] + dragAmount / size.width.toFloat()).coerceIn(0f, 1f)
+                            dragState[0] = newFrac
+                            player.seekTo((newFrac * durationMs).toLong())
                         }
                     }
                 )
@@ -755,8 +760,7 @@ private fun TimelineScrubber(
             }
 
             if (durationMs > 0) {
-                val posFrac = if (isDragging) dragPosition else currentPositionMs.toFloat() / durationMs
-                val px = posFrac.coerceIn(0f, 1f) * w
+                val px = scrubFraction.coerceIn(0f, 1f) * w
 
                 drawLine(
                     color = accentColor,
