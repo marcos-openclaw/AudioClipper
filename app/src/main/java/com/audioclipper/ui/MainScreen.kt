@@ -618,7 +618,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                         } else {
                             Icon(Icons.Filled.ContentCut, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Export as MP3")
+                            Text("Export Audio")
                         }
                     }
 

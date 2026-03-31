@@ -175,7 +175,7 @@ class MainViewModel : ViewModel() {
                 val baseName = _audioFileName.value
                     .substringBeforeLast(".")
                     .replace(" ", "_")
-                val outputFile = File(outputDir, "${baseName}_clip_${timestamp}.mp3")
+                val outputFile = File(outputDir, "${baseName}_clip_${timestamp}.m4a")
                 val outputPath = outputFile.absolutePath
 
                 val startSec = inMs / 1000.0
@@ -218,7 +218,7 @@ class MainViewModel : ViewModel() {
                     if (audioFilters.isNotEmpty()) {
                         append("-af \"${audioFilters.joinToString(",")}\" ")
                     }
-                    append("-acodec libmp3lame -b:a 192k ")
+                    append("-c:a aac -b:a 192k ")
                     append("-y \"$outputPath\"")
                 }
 
@@ -228,7 +228,7 @@ class MainViewModel : ViewModel() {
                     MediaScannerConnection.scanFile(
                         context,
                         arrayOf(outputPath),
-                        arrayOf("audio/mpeg"),
+                        arrayOf("audio/mp4"),
                         null
                     )
                     _exportState.value = ExportState.Done(outputPath)
