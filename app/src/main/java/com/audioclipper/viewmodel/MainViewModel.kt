@@ -234,7 +234,36 @@ class MainViewModel : ViewModel() {
                     _exportState.value = ExportState.Done(outputPath)
                 } else {
                     val logs = session.allLogsAsString ?: "Unknown error"
-                    _exportState.value = ExportState.Error("Export failed: $logs")
+                    // Write full error log to a shareable file
+                    try {
+                        val logDir = File(
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                            "AudioClipper"
+                        )
+                        if (!logDir.exists()) logDir.mkdirs()
+                        val logFile = File(logDir, "export_error_log.txt")
+                        logFile.writeText(buildString {
+                            appendLine("=== AudioClipper Export Error Log ===")
+                            appendLine("Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}")
+                            appendLine("Input: ${_audioFileName.value}")
+                            appendLine("Input path: $inputPath")
+                            appendLine("Output path: $outputPath")
+                            appendLine("FFmpeg command: $command")
+                            appendLine("Return code: ${session.returnCode}")
+                            appendLine()
+                            appendLine("=== Full FFmpeg Log ===")
+                            appendLine(logs)
+                        })
+                        MediaScannerConnection.scanFile(
+                            context,
+                            arrayOf(logFile.absolutePath),
+                            arrayOf("text/plain"),
+                            null
+                        )
+                        _exportState.value = ExportState.Error("Export failed. Full log saved to Documents/AudioClipper/export_error_log.txt")
+                    } catch (e: Exception) {
+                        _exportState.value = ExportState.Error("Export failed: $logs")
+                    }
                 }
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error("Error: ${e.message}")
