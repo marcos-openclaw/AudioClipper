@@ -150,13 +150,20 @@ class MainViewModel : ViewModel() {
         _exportState.value = ExportState.Exporting
 
         viewModelScope.launch(Dispatchers.IO) {
+            var tempInputFile: File? = null
             try {
-                val pfd = context.contentResolver.openFileDescriptor(uri, "r") ?: run {
+                // Copy input to temp file — /proc/self/fd/ is unreliable with FFmpegKit on many devices
+                tempInputFile = File(context.cacheDir, "audioclipper_input_${System.currentTimeMillis()}")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tempInputFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: run {
                     _exportState.value = ExportState.Error("Cannot open audio file")
                     return@launch
                 }
 
-                val inputPath = "/proc/self/fd/${pfd.fd}"
+                val inputPath = tempInputFile.absolutePath
 
                 val outputDir = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
@@ -216,7 +223,6 @@ class MainViewModel : ViewModel() {
                 }
 
                 val session = FFmpegKit.execute(command)
-                pfd.close()
 
                 if (ReturnCode.isSuccess(session.returnCode)) {
                     MediaScannerConnection.scanFile(
@@ -232,6 +238,8 @@ class MainViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error("Error: ${e.message}")
+            } finally {
+                tempInputFile?.delete()
             }
         }
     }

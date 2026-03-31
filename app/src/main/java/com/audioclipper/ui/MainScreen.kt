@@ -116,7 +116,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var scrubFraction by remember { mutableFloatStateOf(0f) }
 
     val player = remember {
-        ExoPlayer.Builder(context).build()
+        ExoPlayer.Builder(context).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE
+        }
     }
 
     DisposableEffect(Unit) {
