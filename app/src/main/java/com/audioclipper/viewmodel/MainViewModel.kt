@@ -196,7 +196,7 @@ class MainViewModel : ViewModel() {
                 val vol = _volumePercent.value
                 if (vol != 100) {
                     val volFloat = vol / 100.0
-                    audioFilters.add("volume=${"%.2f".format(volFloat)}")
+                    audioFilters.add("volume=${"%.2f".format(Locale.US, volFloat)}")
                 }
 
                 // Fade in
@@ -208,7 +208,7 @@ class MainViewModel : ViewModel() {
                 if (_fadeOutEnabled.value && _fadeOutDuration.value > 0f) {
                     val fadeOutStart = clipDuration - _fadeOutDuration.value
                     if (fadeOutStart > 0) {
-                        audioFilters.add("afade=t=out:st=${"%.2f".format(fadeOutStart)}:d=${_fadeOutDuration.value}")
+                        audioFilters.add("afade=t=out:st=${"%.2f".format(Locale.US, fadeOutStart)}:d=${_fadeOutDuration.value}")
                     }
                 }
 
